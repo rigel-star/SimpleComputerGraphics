@@ -16,4 +16,8 @@ public class BasicMath {
 			
 		return v1 + perc * (v2 - v1);
 	}
+	
+	static public final float map(float value, float istart, float istop, float ostart, float ostop) {
+		return ostart + (ostop - ostart) * ((value - istart) / (istop - istart));
+	}
 }
