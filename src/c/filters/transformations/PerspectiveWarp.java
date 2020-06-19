@@ -36,7 +36,7 @@ public class PerspectiveWarp extends JFrame {
 	
 	private double x1, y1, x2, y2, x3, y3, x4, y4, X1, Y1, X2, Y2, X3, Y3, X4, Y4;
 	
-	private BufferedImage src, copy, computedImage;
+	private BufferedImage mainSrc, src, copy, computedImage;
 	private Point startP = null, endP = null;
 	private Point extraStartP = null, extraEndP = null;
 	private List<Line2D> actLns = new ArrayList<Line2D>();
@@ -49,12 +49,15 @@ public class PerspectiveWarp extends JFrame {
 	private Rectangle bounds;
 	private BufferedImage target;
 	
+	private boolean enableEraserTool = false;
+	
 	public PerspectiveWarp(BufferedImage src) {
 		
-		this.src = src;
+		this.mainSrc = src;
+		this.src = getCopy(mainSrc);
 		
 		try {
-			target = ImageIO.read(new File("C:\\Users\\Ramesh\\Desktop\\opencv\\mack.jpg"));
+			target = ImageIO.read(new File("C:\\Users\\Ramesh\\Desktop\\opencv\\sunflow.png"));
 		} catch(IOException ex) {
 			ex.printStackTrace();
 		}
@@ -76,7 +79,6 @@ public class PerspectiveWarp extends JFrame {
 		
 		p.addMouseListener(mh);
 		p.addMouseMotionListener(mh);
-		
 	}
 	
 	
@@ -90,7 +92,7 @@ public class PerspectiveWarp extends JFrame {
 
 	public static void main(String[] args) throws FileNotFoundException, IOException {
 		
-		var img = ImageIO.read(new FileInputStream(new File("C:\\Users\\Ramesh\\Desktop\\pers_homog\\boxes2.jpg")));
+		var img = ImageIO.read(new FileInputStream(new File("C:\\Users\\Ramesh\\Desktop\\pers_homog\\floor.jpg")));
 		new PerspectiveWarp(img);
 		
 	}
@@ -113,8 +115,12 @@ public class PerspectiveWarp extends JFrame {
 				g2d.draw(new Line2D.Double(startP, endP));
 			
 			if(pts.size() == 4) {
+				var pp1 = pts.get(0);
+				var pp2 = pts.get(1);
+				var pp3 = pts.get(2);
+				var pp4 = pts.get(3);
 				computedImage = VanishingPointEffect.Pseudo3D.computeImage(target,
-						pts.get(0), pts.get(1), pts.get(2), pts.get(3));
+						pp1, pp2, pp3, pp4);
 				g2d.drawImage(computedImage, 0, 0, null);
 			}
 			
@@ -171,14 +177,25 @@ public class PerspectiveWarp extends JFrame {
 		public void mouseDragged(MouseEvent e) {
 			super.mouseDragged(e);
 			
-			if(pts.size() < 4)
-				return;
+			var pp = e.getPoint();
 			
-			if (draggedPoint != null)
-	        {
-	            draggedPoint.setLocation(e.getX(), e.getY());
-	            context.repaint();
-	        }
+			if(!enableEraserTool) {
+				if(pts.size() < 4)
+					return;
+				if (draggedPoint != null) {
+		            draggedPoint.setLocation(e.getX(), e.getY());
+		            context.repaint();
+		        }
+			}
+			else {
+				for(int x = pp.x; x < pp.x + 5; x++) {
+					for(int y = pp.y; y < pp.y + 5; y++){
+						var c = mainSrc.getRGB(x, y);
+						copy.setRGB(x, y, c);
+					}
+				}
+				repaint();
+			}
 		}
 		
 		
@@ -187,55 +204,75 @@ public class PerspectiveWarp extends JFrame {
 			super.mouseClicked(e);
 			
 			if(e.getButton() == MouseEvent.BUTTON3) {
-				copy = getCopy(src);
-				startP = null;
-				endP = null;
-				extraEndP = null;
-				extraStartP = null;
-				
-				g = copy.createGraphics();
-				g.setPaint(Color.yellow);
-				g.setStroke(new BasicStroke(3));
-				
-				pts.clear();
-				actLns.clear();
-				eps.clear();
-				lloc.clear();
+				clearAll();
 			}
 			
 			else if(e.getButton() == MouseEvent.BUTTON1) {
 				if(pts.size() >= 4) {
 					
-					System.out.print("4 corners already selected, enter y to save image and i for info: ");
-					Scanner sc = new Scanner(System.in);
-					String cmd = sc.nextLine();
+					System.out.print("4 corners already selected:\n"
+							+ "enter y to save image and i for info,\n"
+							+ "enter er for eraser tool,\n"
+							+ "enter pl to show perspective planes: ");
 					
-					if("y".equals(cmd)) {
-						try {
-							var poly = new Polygon();
+					new Thread(new Runnable() {
+						
+						@Override
+						public void run() {
 							
-							for(Point p: pts) {
-								poly.addPoint(p.x, p.y);
+							while(true) {
+								Scanner sc = new Scanner(System.in);
+								String cmd = sc.nextLine();
+								
+								if("y".equals(cmd)) {
+									try {
+										var poly = new Polygon();
+										
+										for(Point p: pts) {
+											poly.addPoint(p.x, p.y);
+										}
+										
+										var bound = poly.getBounds();
+										var ii = getCropedImage(mainSrc, pts, bound.width, bound.height);
+										
+										ImageIO.write(ii, "jpg", new File("C:\\Users\\Ramesh\\Desktop\\uoi.jpg"));
+									} catch (IOException ex) {
+										ex.printStackTrace();
+									}
+								}
+								else if("i".equals(cmd)) {
+									getUntransformedQuadImage();
+									System.out.println("Height: " + bounds.height);
+									System.out.println("Width: " + bounds.width);
+									System.out.println("X Pos: " + bounds.x);
+									System.out.println("Y Pos: " + bounds.y);
+								}
+								else if("c".equals(cmd)) {
+									var gg = src.createGraphics();
+									gg.drawImage(computedImage, 0, 0, null);
+									clearAll();
+	
+								}
+								else if("er".equals(cmd)) {
+									var gg = src.createGraphics();
+									gg.drawImage(computedImage, 0, 0, null);
+									clearAll();
+									enableEraserTool = true;
+									revalidate();
+									repaint();
+								}
+								
+								else if("break".equals(cmd)) {
+									sc.close();
+									return;
+								}
+							
 							}
-							
-							var bound = poly.getBounds();
-							var ii = getCropedImage(src, pts, bound.width, bound.height);
-							
-							ImageIO.write(ii, "jpg", new File("C:\\Users\\Ramesh\\Desktop\\uoi.jpg"));
-						} catch (IOException ex) {
-							ex.printStackTrace();
 						}
-					}
-					else if("i".equals(cmd)) {
-						getUntransformedQuadImage();
-						System.out.println("Height: " + bounds.height);
-						System.out.println("Width: " + bounds.width);
-						System.out.println("X Pos: " + bounds.x);
-						System.out.println("Y Pos: " + bounds.y);
-					}
-					sc.close();
-					return;
+						
+					}).start();
 				}
+			
 				
 				var pt = new Point(e.getX(), e.getY());
 				
@@ -257,9 +294,12 @@ public class PerspectiveWarp extends JFrame {
 					actLns.add(new Line2D.Double(pts.get(2), pts.get(3)));
 					lloc.add(new LineLocation(pts.get(0), pts.get(3)));
 					lloc.add(new LineLocation(pts.get(2), pts.get(3)));
+					
+					//pplane.add(new PerspectivePlane(pts.get(0), pts.get(1), pts.get(2), pts.get(3)));
 				}
 				
 			}
+			
 			context.repaint();
 		}
 		
@@ -295,8 +335,25 @@ public class PerspectiveWarp extends JFrame {
 		}
 		
 		
+		private void clearAll() {
+			copy = getCopy(src);
+			startP = null;
+			endP = null;
+			extraEndP = null;
+			extraStartP = null;
+			
+			g = copy.createGraphics();
+			g.setPaint(Color.yellow);
+			g.setStroke(new BasicStroke(3));
+			
+			pts.clear();
+			actLns.clear();
+			eps.clear();
+			lloc.clear();
+		}
+		
+		
 	}
-
 	
 	
 	class LineLocation {
